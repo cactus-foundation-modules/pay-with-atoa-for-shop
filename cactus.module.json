@@ -1,6 +1,6 @@
 {
   "name": "pay-with-atoa-for-shop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "tablePrefix": "atp_",
   "description": "Pay With Atoa for the Shop: open-banking (pay-by-bank) checkout payments, confirmed by webhook. Refunds are recorded in the shop and sent from your own bank.",
   "requiresCoreVersion": "0.5.1418",
@@ -39,13 +39,31 @@
       "component": "AtoaSettingsTab"
     }
   ],
-  "cspOrigins": {},
+  "cspOrigins": {
+    "script": [
+      "https://unpkg.com"
+    ],
+    "connect": [
+      "https://api.atoa.me"
+    ],
+    "img": [
+      "https://atoa-static-images.s3.eu-west-2.amazonaws.com",
+      "https://atoa-gifs.s3.eu-west-2.amazonaws.com",
+      "https://atoa-merchant-prod.s3.eu-west-2.amazonaws.com"
+    ]
+  },
   "extensionPoints": [
     {
       "point": "shop.payment-providers",
       "id": "pay-with-atoa",
       "import": "./lib/provider",
       "component": "atoaProvider"
+    },
+    {
+      "point": "shop.checkout-payment-fields",
+      "id": "ATOA",
+      "import": "./components/public/AtoaCheckoutFields",
+      "component": "AtoaCheckoutFields"
     }
   ],
   "teardown": [

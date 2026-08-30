@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_EXPIRES_IN_MINUTES, MAX_PAYMENT_DESCRIPTION_LENGTH, MIN_EXPIRES_IN_MINUTES,
-  clampExpiresInMinutes, clampPaymentDescription,
+  clampExpiresInMinutes, clampPaymentDescription, toPaymentEntry,
 } from '@/modules/pay-with-atoa-for-shop/lib/settings'
 
 describe('clampExpiresInMinutes', () => {
@@ -40,5 +40,27 @@ describe('clampPaymentDescription', () => {
     expect(clampPaymentDescription('  Corner Shop  ')).toBe('Corner Shop')
     expect(clampPaymentDescription(null)).toBe('')
     expect(clampPaymentDescription(7)).toBe('')
+  })
+})
+
+describe('toPaymentEntry', () => {
+  it('keeps either of the two real choices', () => {
+    expect(toPaymentEntry('redirect')).toBe('redirect')
+    expect(toPaymentEntry('on-page')).toBe('on-page')
+  })
+
+  // A row written before 002_payment_entry.sql existed reads NULL here, and a
+  // value from a later version of this module reads as something this one has
+  // never heard of. Both must land on the redirect, which needs nothing of
+  // anybody - the on-page dialog only opens on a domain whitelisted in the Atoa
+  // dashboard, so defaulting to it would switch a working payment method off on
+  // a live shop the moment the module updated.
+  it('reads anything else as the hosted redirect', () => {
+    expect(toPaymentEntry(null)).toBe('redirect')
+    expect(toPaymentEntry(undefined)).toBe('redirect')
+    expect(toPaymentEntry('onpage')).toBe('redirect')
+    expect(toPaymentEntry('ON-PAGE')).toBe('redirect')
+    expect(toPaymentEntry(true)).toBe('redirect')
+    expect(toPaymentEntry({ paymentEntry: 'on-page' })).toBe('redirect')
   })
 })

@@ -18,11 +18,29 @@ import { prisma } from '@/lib/db/prisma'
 
 export type AtoaEnvironment = 'production' | 'sandbox'
 
+// Where the shopper authorises the payment.
+//
+//  'redirect' - handed to Atoa's own hosted page and brought back afterwards.
+//  'on-page'  - Atoa's dialog opens over this site's own checkout, which needs
+//               the site's domain whitelisted in the Atoa dashboard first.
+//
+// The two are mutually exclusive by design: an intent carries an approvalUrl or
+// it carries clientFields, never both, because those are two contradictory
+// instructions to the checkout (see lib/intent.ts).
+export type AtoaPaymentEntry = 'redirect' | 'on-page'
+
 // Sandbox and production share one API host (api.atoa.me); which environment a
 // call lands in is decided by the key it is made with. So getting this wrong is
 // not a connection error, it is real money moving - hence the safe fallback
 // below and the unmissable label the settings tab gives it.
 const FALLBACK_ENVIRONMENT: AtoaEnvironment = 'sandbox'
+
+// Redirect, and not merely as a tidy default. The on-page dialog only loads on
+// a domain whitelisted in the Atoa dashboard, and no existing shop has been
+// asked to do that - so an unrecognised or missing value reading as 'on-page'
+// would switch a working payment method off on somebody's live shop the moment
+// they updated the module. The redirect path needs nothing of anybody.
+const FALLBACK_PAYMENT_ENTRY: AtoaPaymentEntry = 'redirect'
 
 // How long an Atoa payment link stays alive, in minutes.
 //
@@ -46,6 +64,8 @@ export type AtoaSettings = {
   // MAX_PAYMENT_DESCRIPTION_LENGTH, which is Atoa's own limit.
   paymentDescription: string
   environment: AtoaEnvironment
+  // Hosted redirect, or the on-page dialog. See AtoaPaymentEntry.
+  paymentEntry: AtoaPaymentEntry
   expiresInMinutes: number
   // Whether Atoa is allowed to offer cards as well as pay-by-bank.
   allowCard: boolean
@@ -59,6 +79,7 @@ const FALLBACK: AtoaSettings = {
   enabled: false,
   paymentDescription: '',
   environment: FALLBACK_ENVIRONMENT,
+  paymentEntry: FALLBACK_PAYMENT_ENTRY,
   expiresInMinutes: 30,
   allowCard: false,
   webhookEndpointId: null,
@@ -69,6 +90,13 @@ const FALLBACK: AtoaSettings = {
 // or two, and a cast would hand the API client an environment that is neither.
 function toEnvironment(stored: unknown): AtoaEnvironment {
   return stored === 'production' || stored === 'sandbox' ? stored : FALLBACK_ENVIRONMENT
+}
+
+// Anything unrecognised reads as 'redirect' - see FALLBACK_PAYMENT_ENTRY. That
+// covers a row written before this column existed as well as a value from a
+// future version of this module that this one has never heard of.
+export function toPaymentEntry(stored: unknown): AtoaPaymentEntry {
+  return stored === 'on-page' || stored === 'redirect' ? stored : FALLBACK_PAYMENT_ENTRY
 }
 
 export function clampExpiresInMinutes(stored: unknown): number {
@@ -98,6 +126,7 @@ export async function getAtoaSettings(): Promise<AtoaSettings> {
     enabled: r.enabled === true,
     paymentDescription: clampPaymentDescription(r.payment_description),
     environment: toEnvironment(r.environment),
+    paymentEntry: toPaymentEntry(r.payment_entry),
     expiresInMinutes: clampExpiresInMinutes(r.expires_in_minutes),
     allowCard: r.allow_card === true,
     webhookEndpointId: (r.webhook_endpoint_id as string | null) ?? null,
@@ -117,15 +146,17 @@ export async function updateAtoaSettings(input: Partial<AtoaSettings>): Promise<
     // Clamped on the way in as well as on the way out, so a bad value never
     // reaches the row in the first place.
     paymentDescription: clampPaymentDescription(input.paymentDescription ?? current.paymentDescription),
+    paymentEntry: toPaymentEntry(input.paymentEntry ?? current.paymentEntry),
     expiresInMinutes: clampExpiresInMinutes(input.expiresInMinutes ?? current.expiresInMinutes),
   }
   await prisma.$executeRaw`
-    INSERT INTO "atp_settings" ("id", "enabled", "payment_description", "environment", "expires_in_minutes", "allow_card", "webhook_endpoint_id", "updated_at")
-    VALUES ('singleton', ${merged.enabled}, ${merged.paymentDescription}, ${merged.environment}, ${merged.expiresInMinutes}, ${merged.allowCard}, ${merged.webhookEndpointId}, CURRENT_TIMESTAMP)
+    INSERT INTO "atp_settings" ("id", "enabled", "payment_description", "environment", "payment_entry", "expires_in_minutes", "allow_card", "webhook_endpoint_id", "updated_at")
+    VALUES ('singleton', ${merged.enabled}, ${merged.paymentDescription}, ${merged.environment}, ${merged.paymentEntry}, ${merged.expiresInMinutes}, ${merged.allowCard}, ${merged.webhookEndpointId}, CURRENT_TIMESTAMP)
     ON CONFLICT ("id") DO UPDATE SET
       "enabled" = ${merged.enabled},
       "payment_description" = ${merged.paymentDescription},
       "environment" = ${merged.environment},
+      "payment_entry" = ${merged.paymentEntry},
       "expires_in_minutes" = ${merged.expiresInMinutes},
       "allow_card" = ${merged.allowCard},
       "webhook_endpoint_id" = ${merged.webhookEndpointId},

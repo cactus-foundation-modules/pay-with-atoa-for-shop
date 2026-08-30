@@ -1,10 +1,11 @@
 // The Pay With Atoa payment provider, registered into the shop checkout via the
 // `shop.payment-providers` extension point (see the manifest).
 //
-// Phase one only: the shopper is handed to Atoa's own hosted page and sent
-// back. The on-page dialog is a later phase and adds one branch to createIntent
-// - never both an approvalUrl and clientFields on the same intent, because that
-// gives the checkout two contradictory instructions.
+// The shopper either goes to Atoa's own hosted page and comes back, or
+// authorises in Atoa's dialog over this site's own checkout - the owner's
+// choice, stored as `paymentEntry`. The two part company in exactly one place,
+// lib/intent.ts: never both an approvalUrl and clientFields on the same intent,
+// because that gives the checkout two contradictory instructions.
 import { getSiteUrl } from '@/lib/config/env'
 import type {
   ShpOrderDraft, ShpPaymentIntent, ShpPaymentProvider, ShpPaymentResult,
@@ -17,6 +18,7 @@ import * as atoa from '@/modules/pay-with-atoa-for-shop/lib/atoa'
 import { atoaSettlementOutcome } from '@/modules/pay-with-atoa-for-shop/lib/status'
 import { ATOA_CURRENCY, ATOA_MINIMUM_AMOUNT, isAtoaCurrency, isBelowAtoaMinimum, roundToPennies, toPence } from '@/modules/pay-with-atoa-for-shop/lib/amount'
 import { createAtpPayment, getAtpPaymentByOrderId, updateAtpPayment } from '@/modules/pay-with-atoa-for-shop/lib/db'
+import { atoaPaymentIntent } from '@/modules/pay-with-atoa-for-shop/lib/intent'
 
 const METHOD_ID = 'ATOA'
 const RETURN_PATH = '/api/m/pay-with-atoa-for-shop/return'
@@ -53,12 +55,19 @@ async function isAvailable(): Promise<boolean> {
 }
 
 // The publishable, order-independent half: which of Atoa's two environments the
-// shop is in. Spelled the way Atoa's own web SDK expects it, so the on-page
-// dialog a later phase adds can hand it straight over. Nothing secret, and
-// nothing order-specific - this goes to every shopper who loads the checkout.
+// shop is in. Spelled the way Atoa's own web SDK expects it, so the dialog can
+// hand it straight over. Nothing secret, and nothing order-specific - this goes
+// to every shopper who loads the checkout.
+//
+// null in redirect mode, and that is load-bearing rather than tidy: shop mounts
+// a method's fields component the moment this returns anything at all, so a
+// shop set to the hosted redirect would otherwise draw the on-page component -
+// and fetch Atoa's SDK onto its checkout - for a shopper who is going to be
+// redirected anyway.
 async function getClientFields(): Promise<Record<string, unknown> | null> {
-  if (!(await isAvailable())) return null
   const settings = await getAtoaSettings()
+  if (settings.paymentEntry !== 'on-page') return null
+  if (!(await isAvailable())) return null
   return { environment: settings.environment === 'production' ? 'PRODUCTION' : 'SANDBOX' }
 }
 
@@ -99,7 +108,10 @@ async function createIntent(order: ShpOrderDraft): Promise<ShpPaymentIntent> {
     existing.currency.toUpperCase() === order.currency.toUpperCase() &&
     Date.now() - existing.createdAt.getTime() < settings.expiresInMinutes * 60_000
   ) {
-    return { approvalUrl: existing.paymentUrl, providerOrderId: existing.paymentRequestId }
+    return atoaPaymentIntent(settings.paymentEntry, {
+      paymentRequestId: existing.paymentRequestId,
+      paymentUrl: existing.paymentUrl,
+    })
   }
 
   // Capped at 30 characters because Atoa rejects anything longer outright. The
@@ -122,7 +134,14 @@ async function createIntent(order: ShpOrderDraft): Promise<ShpPaymentIntent> {
       ...(order.customerEmail.trim() ? { email: order.customerEmail.trim() } : {}),
       ...splitCustomerName(order.customerName),
     },
-    allowCard: settings.allowCard,
+    // Cards are Atoa's other trick, and in the dialog they are not Atoa's own
+    // work at all: the SDK loads Rapyd's checkout toolkit from a third origin
+    // and draws the card form in Rapyd's iframe. That is a payment page pulling
+    // in a fourth party's script, on origins this module has deliberately not
+    // put into every install's Content-Security-Policy - so in on-page mode the
+    // card step could only ever fail in front of a shopper. Pay-by-bank only
+    // there, said plainly in the settings tab rather than done quietly.
+    allowCard: settings.allowCard && settings.paymentEntry === 'redirect',
   })
 
   await createAtpPayment({
@@ -138,13 +157,19 @@ async function createIntent(order: ShpOrderDraft): Promise<ShpPaymentIntent> {
     returnPath,
   })
 
-  return { approvalUrl: created.paymentUrl, providerOrderId: created.paymentRequestId }
+  return atoaPaymentIntent(settings.paymentEntry, created)
 }
 
-// Best-effort confirmation for the on-page confirm route. The redirect-return
-// route and the webhook are the real confirmation path; this simply reports
-// where the payment has got to, re-validating amount and currency and never
-// trusting the client payload - which is why the payload is not read at all.
+// What the confirm route calls. The redirect-return route and the webhook are
+// the other two ways a payment settles; this one reports where the payment has
+// got to, re-validating amount and currency and never trusting the client
+// payload - which is why the payload is not read at all.
+//
+// That matters most in on-page mode, where the dialog itself says a payment
+// completed. It says so because Atoa's own server told it, but the browser is
+// still only a hint about WHEN to look: the answer comes from asking Atoa
+// again, from here, and the amount and currency are checked against the order
+// either way.
 async function confirmPayment(order: ShpOrderDraft): Promise<ShpPaymentResult> {
   const settings = await getAtoaSettings()
   const row = await getAtpPaymentByOrderId(order.orderId)
@@ -157,6 +182,24 @@ async function confirmPayment(order: ShpOrderDraft): Promise<ShpPaymentResult> {
   if (outcome === 'not-started') {
     // The commonest status Atoa has, and it arrives as a perfectly happy 200.
     // It means the shopper has not been through their bank yet.
+    //
+    // WATCH THIS ON THE FIRST REAL ON-PAGE PAYMENT. There are two different
+    // status endpoints in play: Atoa's dialog learns COMPLETED from its own
+    // SDK-side status call, and this asks the merchant-side one
+    // (GET /api/payments/v1/payment-status/{id}). If the merchant side ever
+    // lags behind, this branch tells somebody who HAS just paid that they have
+    // not - and their natural next move, pressing "Place order" again, reopens
+    // Atoa's dialog on the same payment request, because shop keeps the
+    // prepared intent through a failed confirm. What Atoa does with an
+    // already-COMPLETED request has never been observed.
+    //
+    // No retry has been added, deliberately: there is no evidence the lag
+    // exists (the dialog learns COMPLETED from Atoa's own server, so it cannot
+    // be ahead of Atoa), a poll here would slow down every genuine "not paid
+    // yet" answer, and this same function settles an existing order from the
+    // customer's own order page, where the delay would buy nothing. Unobserved
+    // rather than dismissed - if a first live on-page payment reports this
+    // wrongly, this is the place, and a single bounded re-read is the fix.
     return { success: false, error: 'This payment has not been completed with your bank yet.' }
   }
   if (outcome === 'failed') return { success: false, error: 'The bank payment did not go through.' }

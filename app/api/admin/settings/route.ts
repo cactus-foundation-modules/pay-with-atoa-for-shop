@@ -1,8 +1,8 @@
 // GET/PATCH /api/m/pay-with-atoa-for-shop/admin/settings
 // Non-secret module settings: the on/off toggle, the payment reference shown to
 // the payer, which of Atoa's two environments the shop takes payments in, how
-// long a payment link lives, and whether cards are offered alongside
-// pay-by-bank. The credentials themselves are environment variables and go
+// long a payment link lives, where the shopper authorises the payment, and
+// whether cards are offered alongside pay-by-bank. The credentials themselves are environment variables and go
 // nowhere near this route.
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
@@ -31,6 +31,10 @@ const PatchBody = z.object({
   // Stored rather than an env var, so switching between test and real money
   // takes effect on the next request instead of the next deployment.
   environment: z.enum(['sandbox', 'production']).optional(),
+  // Hosted redirect or the on-page dialog. A closed set rather than a free
+  // string: the column carries a CHECK constraint of exactly these two, so
+  // anything else is a 500 from the database instead of a 400 from here.
+  paymentEntry: z.enum(['redirect', 'on-page']).optional(),
   expiresInMinutes: z.number().int().min(MIN_EXPIRES_IN_MINUTES).max(MAX_EXPIRES_IN_MINUTES).optional(),
   allowCard: z.boolean().optional(),
   // `webhookEndpointId` is deliberately NOT settable here. It is Atoa's own id

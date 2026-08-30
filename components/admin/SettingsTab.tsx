@@ -24,6 +24,7 @@
 import { useEffect, useState } from 'react'
 
 type Environment = 'sandbox' | 'production'
+type PaymentEntry = 'redirect' | 'on-page'
 
 const MAX_DESCRIPTION = 30
 const MIN_EXPIRY_MINUTES = 5
@@ -81,6 +82,7 @@ type Settings = {
   enabled: boolean
   paymentDescription: string
   environment: Environment
+  paymentEntry: PaymentEntry
   expiresInMinutes: number
   allowCard: boolean
   webhookEndpointId: string | null
@@ -571,6 +573,47 @@ export function AtoaSettingsTab() {
               />
             </div>
 
+            {/* Where the shopper authorises. Two labelled choices with a
+                sentence each, because the difference is not one anybody can
+                infer from a two-word label - and one of them needs a job doing
+                in the Atoa dashboard first. */}
+            <div className="field">
+              <label htmlFor="atp-payment-entry">Where the shopper pays</label>
+              <p style={{ ...subtleText, margin: '0 0 var(--space-2)' }}>
+                Both take the payment the same way, through the shopper&apos;s own banking app. The
+                difference is where they start it.
+              </p>
+              <select
+                id="atp-payment-entry"
+                value={settings.paymentEntry}
+                disabled={savingSettings}
+                onChange={(e) => saveSettings({ paymentEntry: e.target.value === 'on-page' ? 'on-page' : 'redirect' })}
+              >
+                <option value="redirect">Send them to Atoa&apos;s page</option>
+                <option value="on-page">Open Atoa&apos;s window on your checkout</option>
+              </select>
+              <p style={{ ...subtleText, margin: 'var(--space-2) 0 0' }}>
+                {settings.paymentEntry === 'on-page'
+                  ? 'The shopper stays on your checkout and Atoa opens a window over it. Fewer people wander off, since they never leave your site.'
+                  : 'The shopper goes off to Atoa\u2019s own page to pick their bank, then comes back to you. Nothing to set up, and it works on any site.'}
+              </p>
+              {settings.paymentEntry === 'on-page' && (
+                <div className="alert alert-warning" style={{ marginTop: 'var(--space-3)' }}>
+                  <strong>Whitelist your web address with Atoa first.</strong> The window will not open
+                  on a site Atoa has not been told about, and the shopper sees nothing happen at all. In
+                  the Atoa dashboard: the gear icon in the left sidebar, then Settings, then API Access -
+                  &quot;Whitelist your domains&quot; is at the bottom of the same page as your secrets. Add
+                  your live web address there before you switch this on.
+                </div>
+              )}
+              <p style={{ ...subtleText, margin: 'var(--space-2) 0 0' }}>
+                Whichever you pick, Atoa&apos;s window and Atoa&apos;s page are theirs and come in their
+                own colours - one brand colour you set in their dashboard, and light the rest of the way
+                through. They do not follow your site&apos;s light or dark theme, so choose a brand colour
+                that reads well on white.
+              </p>
+            </div>
+
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', color: 'var(--color-text)' }}>
               <input
                 type="checkbox"
@@ -586,6 +629,14 @@ export function AtoaSettingsTab() {
                   if you already take cards through another method, adding them here only gives the
                   shopper the same choice twice. Whether Atoa can actually offer cards depends on your
                   account with them.
+                  {settings.paymentEntry === 'on-page' && (
+                    <span style={{ display: 'block', marginTop: 'var(--space-1)' }}>
+                      Not used at the moment: with Atoa&apos;s window opening on your own checkout, the
+                      card step belongs to another company again and is switched off here rather than
+                      failing in front of a shopper. Bank payments only. Send shoppers to Atoa&apos;s own
+                      page if you want the card option as well.
+                    </span>
+                  )}
                 </span>
               </span>
             </label>
