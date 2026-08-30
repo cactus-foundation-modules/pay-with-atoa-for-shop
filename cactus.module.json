@@ -1,0 +1,63 @@
+{
+  "name": "pay-with-atoa-for-shop",
+  "version": "0.1.0",
+  "tablePrefix": "atp_",
+  "description": "Pay With Atoa for the Shop: open-banking (pay-by-bank) checkout payments, confirmed by webhook. Refunds are recorded in the shop and sent from your own bank.",
+  "requiresCoreVersion": "0.5.1418",
+  "requiresModules": [
+    {
+      "name": "shop",
+      "minVersion": "0.1.370"
+    }
+  ],
+  "requiredEnvVars": [
+    {
+      "name": "ATOA_ACCESS_SECRET",
+      "required": false
+    },
+    {
+      "name": "ATOA_WEBHOOK_SIGNING_SECRET",
+      "required": false
+    },
+    {
+      "name": "ATOA_SANDBOX_ACCESS_SECRET",
+      "required": false
+    },
+    {
+      "name": "ATOA_SANDBOX_WEBHOOK_SIGNING_SECRET",
+      "required": false
+    }
+  ],
+  "permissions": [],
+  "settingsTabs": [
+    {
+      "id": "pay-with-atoa",
+      "label": "Pay With Atoa",
+      "permission": "shop.manage",
+      "host": "shop.payments",
+      "import": "./components/admin/SettingsTab",
+      "component": "AtoaSettingsTab"
+    }
+  ],
+  "cspOrigins": {},
+  "extensionPoints": [
+    {
+      "point": "shop.payment-providers",
+      "id": "pay-with-atoa",
+      "import": "./lib/provider",
+      "component": "atoaProvider"
+    }
+  ],
+  "teardown": [
+    "atp_refunds",
+    "atp_payments",
+    "atp_settings"
+  ],
+  "cookieCategories": [],
+  "cronJobs": [],
+  "memberExtensions": {
+    "activityTypes": [],
+    "notificationCategories": [],
+    "routeTiers": []
+  }
+}
