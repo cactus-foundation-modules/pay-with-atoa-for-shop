@@ -599,11 +599,12 @@ export function AtoaSettingsTab() {
               </p>
               {settings.paymentEntry === 'on-page' && (
                 <div className="alert alert-warning" style={{ marginTop: 'var(--space-3)' }}>
-                  <strong>Whitelist your web address with Atoa first.</strong> The window will not open
-                  on a site Atoa has not been told about, and the shopper sees nothing happen at all. In
-                  the Atoa dashboard: the gear icon in the left sidebar, then Settings, then API Access -
-                  &quot;Whitelist your domains&quot; is at the bottom of the same page as your secrets. Add
-                  your live web address there before you switch this on.
+                  <strong>Whitelist your web address with Atoa first.</strong> On a site Atoa has not
+                  been told about, their window opens and can only show an error - it is not allowed to
+                  ask them anything about the payment, so the shopper gets no banks to choose from and
+                  no way to pay. In the Atoa dashboard: the gear icon in the left sidebar, then Settings,
+                  then API Access - &quot;Whitelist your domains&quot; is at the bottom of the same page as
+                  your secrets. Add your live web address there before you switch this on.
                 </div>
               )}
               <p style={{ ...subtleText, margin: 'var(--space-2) 0 0' }}>

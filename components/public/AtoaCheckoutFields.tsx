@@ -116,12 +116,22 @@ export function AtoaCheckoutFields({ config, payer, onError, registerSubmit }: S
 
     return new Promise<{ paymentRequestId: string }>((resolve, reject) => {
       let settled = false
+      // Whether the dialog has reported a problem of its own. Only ever
+      // colours the sentence the shopper is eventually given - it settles
+      // nothing by itself, because Atoa's dialog does not give up when it
+      // reports one. See onError.
+      let reported = false
+      // Watches for the dialog leaving the page without saying so. See the
+      // note where it is set up.
+      let removalWatch: MutationObserver | null = null
 
       // The dialog is Atoa's element in this page's own body, so taking it away
       // is our job once it has said its piece. Deferred by a microtask because
       // this runs from inside the dialog's own callback, and removing an
       // element in the middle of dispatching its event is asking for trouble.
       const teardown = () => {
+        removalWatch?.disconnect()
+        removalWatch = null
         const sdk = dialogRef.current
         dialogRef.current = null
         queueMicrotask(() => sdk?.dispose())
@@ -172,14 +182,31 @@ export function AtoaCheckoutFields({ config, payer, onError, registerSubmit }: S
           // and leaves the checkout and the basket exactly as they were.
           onClose: (event) => {
             if (atoaClientOutcome(event?.status) === 'settled') succeed()
-            else fail(atoaCloseMessage(event?.status))
+            else fail(atoaCloseMessage(event?.status, reported))
           },
-          onUserCancel: () => fail(ATOA_MESSAGES.cancelled),
+          onUserCancel: () => fail(reported ? ATOA_MESSAGES.errored : ATOA_MESSAGES.cancelled),
+          // **Reported, not fatal, and this window stays open.** Atoa's dialog
+          // hands every problem it meets to this callback and then carries on
+          // drawing itself: a failed load of the payment's own details leaves
+          // its "Error processing payment" pane on screen, with its own close
+          // button, and the dialog element still in the page. Taking it away
+          // here - which is what this used to do - is how a shopper pressed
+          // "Place order", saw Atoa's window appear and vanish in the same
+          // breath, and was left with no window, no explanation and no idea
+          // what to try next.
+          //
+          // The commonest cause is a web address Atoa has not been told about:
+          // their API answers such an origin with a 403 and no CORS headers, so
+          // every call the dialog makes fails at the browser and this fires.
+          // The dashboard's domain whitelist is the fix, and the settings tab
+          // says so - but a shop that has missed it must still show the
+          // shopper the error rather than a flicker.
+          //
+          // Atoa's own wording is written for a console ("[Atoa Web SDK] Error
+          // displaying payment dialog"), so it goes to one.
           onError: (err) => {
-            // Atoa's own wording is written for a console ("[Atoa Web SDK]
-            // Error displaying payment dialog"), so it goes to one.
+            reported = true
             console.warn('[pay-with-atoa] payment dialog error', err)
-            fail(ATOA_MESSAGES.errored)
           },
         })
         dialogRef.current = sdk
@@ -195,8 +222,28 @@ export function AtoaCheckoutFields({ config, payer, onError, registerSubmit }: S
         // painting agree with what Atoa actually drew. It touches nothing inside
         // the dialog: an inherited property on the host element is the whole of
         // it, and the light value is the one their palette is built for.
-        const host = document.querySelector('atoa-pay-sdk-dialog')
-        if (host instanceof HTMLElement) host.style.colorScheme = 'light'
+        // The last one, not the first: a dialog from an earlier attempt is
+        // disposed of on its way out, but querying for the newest is the
+        // answer that stays right whatever order that happens in.
+        const hosts = document.querySelectorAll('atoa-pay-sdk-dialog')
+        const host = hosts[hosts.length - 1]
+        if (host instanceof HTMLElement) {
+          host.style.colorScheme = 'light'
+
+          // The dialog gone from the page with nothing said about it. Every
+          // route Atoa documents ends in one of the callbacks above, so this
+          // should never fire - but the promise handed to shop is what keeps
+          // "Place order" disabled, and the cost of being wrong about "should
+          // never" is a button that is dead for the rest of the page's life
+          // with nothing on screen to say why. It became worth guarding the
+          // moment onError stopped settling: that was, by accident, the only
+          // thing catching a dialog that ended without a word.
+          removalWatch = new MutationObserver(() => {
+            if (settled || host.isConnected) return
+            fail(reported ? ATOA_MESSAGES.errored : ATOA_MESSAGES.closed)
+          })
+          removalWatch.observe(document.body, { childList: true })
+        }
       } catch (err) {
         console.warn('[pay-with-atoa] payment dialog could not be opened', err)
         fail(ATOA_MESSAGES.errored)

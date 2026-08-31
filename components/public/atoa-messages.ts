@@ -1,9 +1,15 @@
 // What the dialog's four callbacks mean, and what the shopper gets told.
 //
-// Pure and on its own so every outcome can be asserted without a browser. Four
-// callbacks, four distinct outcomes, none of them silent - a payment window
-// that closes and leaves the checkout looking exactly as it did is how somebody
-// ends up pressing "Place order" three times.
+// Pure and on its own so every outcome can be asserted without a browser. A
+// payment window that goes away and leaves the checkout looking exactly as it
+// did is how somebody ends up pressing "Place order" three times, so every way
+// one can end has a sentence here.
+//
+// Three of the dialog's four callbacks end a payment: a status it calls
+// terminal, the shopper closing it, the shopper cancelling. The fourth,
+// onError, does not - Atoa reports a problem and keeps its window open on its
+// own error pane - so it only decides which sentence the eventual close
+// produces.
 //
 // Every sentence here is shopper-facing copy, because throwing from the submit
 // function stops the order and shows the thrown message on the checkout's own
@@ -20,7 +26,9 @@ export const ATOA_MESSAGES = {
   closed: 'The payment window closed before your bank had finished. Nothing has been taken - have another go whenever you are ready.',
   /** A FAILED status from the dialog. The money did not move. */
   failed: 'Your bank did not complete the payment. Nothing has been taken - please try again, or choose another way to pay.',
-  /** onError: the dialog itself went wrong. */
+  /** The dialog reported a problem of its own (onError) and the shopper then
+   *  shut it. Not thrown at the moment of the report: Atoa's window stays up
+   *  and says its piece, and the shopper decides when it is over. */
   errored: 'The bank payment window ran into a problem. Nothing has been taken - please try again, or choose another way to pay.',
   /** The SDK would not load, or answered with something that is not the SDK. */
   loadFailed: 'The bank payment window could not be loaded. Please try again, or choose another way to pay.',
@@ -56,7 +64,15 @@ export function atoaClientOutcome(status: unknown): AtoaClientOutcome {
 
 /** The message for a dialog that closed. `onClose` carries the last status it
  *  had, so a close on a FAILED payment says so rather than pretending the
- *  shopper simply changed their mind. */
-export function atoaCloseMessage(status: unknown): string {
-  return atoaClientOutcome(status) === 'failed' ? ATOA_MESSAGES.failed : ATOA_MESSAGES.closed
+ *  shopper simply changed their mind.
+ *
+ *  `errored` is whether the dialog reported a problem of its own while it was
+ *  open (see the onError note in AtoaCheckoutFields). Atoa keeps its window up
+ *  after one of those and draws its own error pane, so the shopper's next move
+ *  is to close it - and being told the window "closed before your bank had
+ *  finished" when they had just been looking at an error is the wrong end of
+ *  the story. */
+export function atoaCloseMessage(status: unknown, errored = false): string {
+  if (atoaClientOutcome(status) === 'failed') return ATOA_MESSAGES.failed
+  return errored ? ATOA_MESSAGES.errored : ATOA_MESSAGES.closed
 }
