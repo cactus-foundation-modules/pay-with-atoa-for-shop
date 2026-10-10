@@ -517,7 +517,7 @@ export function AtoaSettingsTab() {
 
         {settings && (
           <>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', margin: '0 0 var(--space-4)', color: 'var(--color-text)' }}>
+            <label className="settings-check">
               <input
                 type="checkbox"
                 checked={settings.enabled}

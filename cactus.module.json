@@ -1,9 +1,9 @@
 {
   "name": "pay-with-atoa-for-shop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "tablePrefix": "atp_",
   "description": "Pay With Atoa for the Shop: open-banking (pay-by-bank) checkout payments, confirmed by webhook. Refunds are recorded in the shop and sent from your own bank.",
-  "requiresCoreVersion": "0.5.1758",
+  "requiresCoreVersion": "0.5.1763",
   "requiresModules": [
     {
       "name": "shop",
