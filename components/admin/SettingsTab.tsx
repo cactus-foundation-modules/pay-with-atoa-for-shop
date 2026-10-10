@@ -284,6 +284,7 @@ export function AtoaSettingsTab() {
     return (
       <div
         key={env}
+        className="settings-fields"
         style={{
           border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius-md)',
@@ -419,7 +420,7 @@ export function AtoaSettingsTab() {
         {/* Outside the local-development branch on purpose: the choice is kept
             here rather than in the hosting project, so it works the same way
             everywhere and needs no deployment to take hold. */}
-        <div className="field">
+        <div className="field field--wide">
           <label htmlFor="atp-environment">Which environment the shop uses</label>
           <p style={{ ...subtleText, margin: '0 0 var(--space-2)' }}>
             Saved as soon as you pick it and live straight away - no deployment needed. Atoa uses the
@@ -486,7 +487,7 @@ export function AtoaSettingsTab() {
           </div>
         )}
 
-        <div className="field">
+        <div className="field field--wide">
           <label htmlFor="atp-webhook-url">Where Atoa sends confirmations</label>
           <p style={{ ...subtleText, margin: '0 0 var(--space-2)' }}>
             Shown for your records. Atoa cannot change an address once it is registered - it has to be
@@ -526,7 +527,7 @@ export function AtoaSettingsTab() {
               Offer pay by bank at checkout
             </label>
 
-            <div className="field">
+            <div className="field field--wide">
               <label htmlFor="atp-description">Payment description</label>
               <p style={{ ...subtleText, margin: '0 0 var(--space-2)' }}>
                 What the shopper sees against the payment in their banking app. Leave it blank and
