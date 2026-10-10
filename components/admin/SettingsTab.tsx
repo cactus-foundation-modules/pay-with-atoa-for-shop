@@ -22,6 +22,7 @@
 // consequential thing on this screen and it is said in words, in a banner, and
 // beside the dropdown - not left to be inferred from a select nobody read.
 import { useEffect, useState } from 'react'
+import { SettingsHeaderActions, SettingsHeaderStatus } from '@/components/admin/SettingsHeaderActions'
 
 type Environment = 'sandbox' | 'production'
 type PaymentEntry = 'redirect' | 'on-page'
@@ -344,7 +345,7 @@ export function AtoaSettingsTab() {
   const descriptionLeft = MAX_DESCRIPTION - (settings?.paymentDescription.length ?? 0)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
+    <div className="settings-masonry">
       <div className="card">
         <h2 className="card-title">Pay With Atoa</h2>
         <p style={{ ...subtleText, margin: '0 0 var(--space-4)' }}>
@@ -446,9 +447,12 @@ export function AtoaSettingsTab() {
           <>
             {ENVIRONMENTS.map((e) => renderCredentials(e.id))}
 
-            <button className="btn btn-primary" disabled={savingConn} onClick={saveConnection}>
-              {savingConn ? 'Saving…' : 'Save connection'}
-            </button>
+            <SettingsHeaderActions>
+              <SettingsHeaderStatus message={savedConn ? 'Saved. Live from the next deployment.' : null} error={connError} />
+              <button className="btn btn-primary" disabled={savingConn} onClick={saveConnection}>
+                {savingConn ? 'Saving…' : 'Save connection'}
+              </button>
+            </SettingsHeaderActions>
           </>
         )}
       </div>
